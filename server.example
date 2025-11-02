@@ -1,0 +1,47 @@
+# ============================================
+# KONFIGURACJA SERWERA
+# ============================================
+PORT=3000
+NODE_ENV=development
+
+# ============================================
+# BAZA DANYCH
+# ============================================
+DB_PATH=./database.sqlite
+
+# ============================================
+# JWT - AUTORYZACJA
+# ============================================
+JWT_SECRET=twoj-super-tajny-klucz-zmien-to-w-produkcji-na-dlugi-randomowy-string
+JWT_EXPIRES_IN=7d
+
+# ============================================
+# FRONTEND URL
+# ============================================
+FRONTEND_URL=http://localhost:5500
+
+# ============================================
+# EMAIL - OPCJONALNE (wyłączone w development)
+# ============================================
+# Zostaw puste lub usuń te linie jeśli nie chcesz konfigurować email w dev
+
+# Dla Gmail (wymaga App Password):
+# EMAIL_HOST=smtp.gmail.com
+# EMAIL_PORT=587
+# EMAIL_USER=twoj-email@gmail.com
+# EMAIL_PASS=twoje-haslo-aplikacji
+# EMAIL_FROM="Akademia BA <twoj-email@gmail.com>"
+
+# Dla Outlook:
+# EMAIL_HOST=smtp-mail.outlook.com
+# EMAIL_PORT=587
+# EMAIL_USER=twoj-email@outlook.com
+# EMAIL_PASS=twoje-haslo
+# EMAIL_FROM="Akademia BA <twoj-email@outlook.com>"
+
+# Lub zostaw puste w dev mode:
+EMAIL_HOST=
+EMAIL_PORT=
+EMAIL_USER=
+EMAIL_PASS=
+EMAIL_FROM="Akademia BA <noreply@localhost>"
