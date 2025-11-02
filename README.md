@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 🚀 Business Analysis Platform - Backend
 
 Backend dla platformy edukacyjnej Business Analysis. API REST zbudowane w Node.js + Express + SQLite.
@@ -311,3 +312,6 @@ ISC
 ---
 
 **Potrzebujesz pomocy?** Otwórz issue na GitHubie lub napisz maila! 😊
+=======
+# FM-final
+>>>>>>> 5aa1bdac509ace31c5ef926a6b6a575b4c9ce47e
