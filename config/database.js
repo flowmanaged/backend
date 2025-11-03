@@ -1,44 +1,17 @@
-const sqlite3 = require('sqlite3').verbose();
-const path = require('path');
+const mongoose = require('mongoose');
 
-// Ścieżka do pliku bazy danych
-const DB_PATH = path.join(__dirname, '..', 'database.db');
+const connectDB = async () => {
+    try {
+        const conn = await mongoose.connect(process.env.MONGO_URI, {
+            useNewUrlParser: true,
+            useUnifiedTopology: true,
+        });
 
-// Utworzenie/otwarcie połączenia z bazą
-const db = new sqlite3.Database(DB_PATH, (err) => {
-  if (err) {
-    console.error('❌ Błąd połączenia z bazą danych:', err.message);
-  } else {
-    console.log('✅ Połączono z bazą danych SQLite');
-  }
-});
-
-// Helper function do wykonywania zapytań z Promise
-db.runAsync = function(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    this.run(sql, params, function(err) {
-      if (err) reject(err);
-      else resolve(this);
-    });
-  });
+        console.log(`✅ MongoDB połączone: ${conn.connection.host}`);
+    } catch (error) {
+        console.error(`❌ Błąd połączenia z MongoDB: ${error.message}`);
+        process.exit(1);
+    }
 };
 
-db.getAsync = function(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    this.get(sql, params, (err, row) => {
-      if (err) reject(err);
-      else resolve(row);
-    });
-  });
-};
-
-db.allAsync = function(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    this.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
-    });
-  });
-};
-
-module.exports = db;
+module.exports = connectDB;

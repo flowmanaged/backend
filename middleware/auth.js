@@ -1,85 +1,75 @@
 const jwt = require('jsonwebtoken');
-const db = require('../config/database');
+const User = require('../models/User');
 
-// Middleware weryfikujący JWT token
-const authenticateToken = async (req, res, next) => {
-  try {
-    // Pobierz token z headera
-    const authHeader = req.headers['authorization'];
-    const token = authHeader && authHeader.split(' ')[1]; // Format: "Bearer TOKEN"
+// Middleware do weryfikacji tokena JWT
+exports.protect = async (req, res, next) => {
+    let token;
 
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: 'Brak tokenu autoryzacji'
-      });
+    // Sprawdź czy token znajduje się w headerze Authorization
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+        token = req.headers.authorization.split(' ')[1];
     }
 
-    // Weryfikuj token
-    jwt.verify(token, process.env.JWT_SECRET, async (err, decoded) => {
-      if (err) {
-        return res.status(403).json({
-          success: false,
-          message: 'Token jest nieprawidłowy lub wygasł'
+    // Sprawdź czy token istnieje
+    if (!token) {
+        return res.status(401).json({
+            success: false,
+            message: 'Brak autoryzacji. Zaloguj się, aby uzyskać dostęp'
         });
-      }
+    }
 
-      // Sprawdź czy użytkownik nadal istnieje w bazie
-      const user = await db.getAsync(
-        'SELECT id, email, is_verified, is_premium FROM users WHERE id = ?',
-        [decoded.userId]
-      );
+    try {
+        // Weryfikuj token
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          message: 'Użytkownik nie istnieje'
+        // Znajdź użytkownika
+        req.user = await User.findById(decoded.id);
+
+        if (!req.user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Użytkownik nie znaleziony'
+            });
+        }
+
+        next();
+    } catch (error) {
+        console.error('Auth middleware error:', error);
+        return res.status(401).json({
+            success: false,
+            message: 'Token jest nieprawidłowy lub wygasł'
         });
-      }
-
-      // Dodaj dane użytkownika do request
-      req.user = {
-        id: user.id,
-        email: user.email,
-        isVerified: user.is_verified,
-        isPremium: user.is_premium
-      };
-
-      next();
-    });
-  } catch (error) {
-    console.error('Auth middleware error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Błąd autoryzacji'
-    });
-  }
+    }
 };
 
-// Middleware sprawdzający czy użytkownik jest zweryfikowany
-const requireVerified = (req, res, next) => {
-  if (!req.user.isVerified) {
-    return res.status(403).json({
-      success: false,
-      message: 'Konto nie zostało zweryfikowane. Sprawdź email.'
-    });
-  }
-  next();
-};
+// Middleware do sprawdzania czy użytkownik ma premium
+exports.premiumRequired = async (req, res, next) => {
+    try {
+        if (!req.user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Najpierw musisz być zalogowany'
+            });
+        }
 
-// Middleware sprawdzający czy użytkownik ma Premium
-const requirePremium = (req, res, next) => {
-  if (!req.user.isPremium) {
-    return res.status(403).json({
-      success: false,
-      message: 'Ta funkcja wymaga konta Premium'
-    });
-  }
-  next();
-};
+        // Sprawdź status premium
+        const isPremiumActive = req.user.checkPremiumStatus();
 
-module.exports = {
-  authenticateToken,
-  requireVerified,
-  requirePremium
+        if (!isPremiumActive) {
+            return res.status(403).json({
+                success: false,
+                message: 'Ta funkcja wymaga konta premium',
+                isPremium: false
+            });
+        }
+
+        next();
+    } catch (error) {
+        console.error('Premium middleware error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Błąd podczas sprawdzania statusu premium',
+            error: error.message
+        });
+    }
 };

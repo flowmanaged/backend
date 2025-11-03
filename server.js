@@ -2,203 +2,132 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-require('dotenv').config();
+const dotenv = require('dotenv');
+const connectDB = require('./config/database');
 
-const authRoutes = require('./routes/auth');
-const userRoutes = require('./routes/user');
-const progressRoutes = require('./routes/progress');
+// Załaduj zmienne środowiskowe
+dotenv.config();
 
+// Połącz z bazą danych
+connectDB();
+
+// Zainicjuj aplikację Express
 const app = express();
-const PORT = process.env.PORT || 3000;
 
-// ============================================
-// OBSŁUGA BŁĘDÓW GLOBALNYCH
-// ============================================
-// Zapobiega zamknięciu serwera przez nieobsłużone błędy
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('⚠️  Unhandled Rejection at:', promise);
-  console.error('⚠️  Reason:', reason?.message || reason);
-  // NIE zamykamy serwera - kontynuujemy działanie
-});
-
-process.on('uncaughtException', (error) => {
-  console.error('⚠️  Uncaught Exception:', error.message);
-  console.error('⚠️  Stack:', error.stack);
-  // NIE zamykamy serwera - kontynuujemy działanie
-});
-
-// ============================================
-// MIDDLEWARE BEZPIECZEŃSTWA
-// ============================================
+// Middleware bezpieczeństwa
 app.use(helmet());
 
-// CORS - zezwól na zapytania z frontendu
+// CORS - dozwól żądania z frontendu
 app.use(cors({
-  origin: [
-    'http://localhost:8080',
-    'http://localhost:5500',
-    'http://localhost:3000',
-    'http://127.0.0.1:8080',
-    'http://127.0.0.1:5500',
-    'http://[::1]:8080',
-    process.env.FRONTEND_URL
-  ].filter(Boolean),
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    credentials: true
 }));
 
-// Rate limiting - ochrona przed atakami
+// Rate limiting - ogranicz liczbę żądań
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minut
-  max: 100, // max 100 requestów na IP
-  message: 'Zbyt wiele zapytań z tego IP, spróbuj ponownie później.'
+    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000, // 15 minut
+    max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100, // max 100 żądań na okno
+    message: {
+        success: false,
+        message: 'Zbyt wiele żądań z tego IP, spróbuj ponownie za chwilę'
+    }
 });
+
 app.use('/api/', limiter);
 
-// Parser JSON
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Body parser
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Logowanie requestów w trybie deweloperskim
-if (process.env.NODE_ENV === 'development') {
-  app.use((req, res, next) => {
-    console.log(`📨 ${req.method} ${req.path}`);
-    next();
-  });
-}
+// Importuj routes
+const authRoutes = require('./routes/authRoutes');
+const progressRoutes = require('./routes/progressRoutes');
+const premiumRoutes = require('./routes/premiumRoutes');
+const adminRoutes = require('./routes/adminRoutes');
+const paymentRoutes = require('./routes/paymentRoutes');
+const couponRoutes = require('./routes/couponRoutes');
 
-// ============================================
-// ROUTES
-// ============================================
-// Wrap routes w try-catch aby obsłużyć błędy inicjalizacji
-try {
-  app.use('/api/auth', authRoutes);
-  console.log('✅ Auth routes załadowane');
-} catch (error) {
-  console.error('❌ Błąd ładowania auth routes:', error.message);
-}
-
-try {
-  app.use('/api/user', userRoutes);
-  console.log('✅ User routes załadowane');
-} catch (error) {
-  console.error('❌ Błąd ładowania user routes:', error.message);
-}
-
-try {
-  app.use('/api/progress', progressRoutes);
-  console.log('✅ Progress routes załadowane');
-} catch (error) {
-  console.error('❌ Błąd ładowania progress routes:', error.message);
-}
-
-// ============================================
-// HEALTH CHECK
-// ============================================
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
-    message: 'Backend działa poprawnie!',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development',
-    port: PORT
-  });
-});
-
-// Root endpoint
+// Endpoint testowy
 app.get('/', (req, res) => {
-  res.json({
-    message: '🎓 Akademia Business Analysis API',
-    version: '1.0.0',
-    endpoints: {
-      health: '/api/health',
-      auth: '/api/auth/*',
-      user: '/api/user/*',
-      progress: '/api/progress/*'
-    }
-  });
+    res.json({
+        success: true,
+        message: 'Akademia Biznesowa API',
+        version: '1.0.0',
+        endpoints: {
+            auth: '/api/auth',
+            progress: '/api/progress',
+            premium: '/api/premium',
+            admin: '/api/admin',
+            payments: '/api/payments',
+            coupons: '/api/coupons'
+        }
+    });
 });
 
-// ============================================
-// ERROR HANDLING MIDDLEWARE
-// ============================================
-// Obsługa błędów z async/await
-app.use((err, req, res, next) => {
-  console.error('❌ Error caught by middleware:');
-  console.error('   Message:', err.message);
-  
-  // Nie pokazuj stack trace w produkcji
-  if (process.env.NODE_ENV === 'development') {
-    console.error('   Stack:', err.stack);
-  }
-  
-  // Określ status code
-  const statusCode = err.statusCode || err.status || 500;
-  
-  res.status(statusCode).json({
-    success: false,
-    message: err.message || 'Coś poszło nie tak!',
-    ...(process.env.NODE_ENV === 'development' && { 
-      stack: err.stack,
-      error: err 
-    })
-  });
+// Health check
+app.get('/health', (req, res) => {
+    res.json({
+        success: true,
+        status: 'OK',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime()
+    });
 });
 
-// 404 handler - musi być na końcu
+// API Routes
+app.use('/api/auth', authRoutes);
+app.use('/api/progress', progressRoutes);
+app.use('/api/premium', premiumRoutes);
+app.use('/api/admin', adminRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/coupons', couponRoutes);
+
+// 404 handler
 app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: `Endpoint nie istnieje: ${req.method} ${req.path}`,
-    availableEndpoints: [
-      'GET /',
-      'GET /api/health',
-      'POST /api/auth/*',
-      'GET /api/user/*',
-      'GET /api/progress/*'
-    ]
-  });
+    res.status(404).json({
+        success: false,
+        message: 'Endpoint nie znaleziony'
+    });
 });
 
-// ============================================
-// START SERWERA
-// ============================================
-const server = app.listen(PORT, () => {
-  console.log('\n' + '='.repeat(60));
-  console.log('🚀 SERWER URUCHOMIONY POMYŚLNIE!');
-  console.log('='.repeat(60));
-  console.log(`📍 Port:              ${PORT}`);
-  console.log(`🌍 Environment:       ${process.env.NODE_ENV || 'development'}`);
-  console.log(`📊 Health check:      http://localhost:${PORT}/api/health`);
-  console.log(`🏠 API Root:          http://localhost:${PORT}/`);
-  console.log(`🔗 Frontend URL:      ${process.env.FRONTEND_URL || 'nie ustawione'}`);
-  console.log('='.repeat(60) + '\n');
-  
-  // Informacja o email
-  if (process.env.EMAIL_HOST) {
-    console.log('📧 Email skonfigurowany');
-  } else {
-    console.log('⚠️  Email nie skonfigurowany (opcjonalny w dev)');
-  }
-  console.log('');
+// Globalny error handler
+app.use((err, req, res, next) => {
+    console.error('Server error:', err);
+    
+    res.status(err.status || 500).json({
+        success: false,
+        message: err.message || 'Wewnętrzny błąd serwera',
+        ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
+    });
 });
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('👋 SIGTERM received, zamykanie serwera...');
-  server.close(() => {
-    console.log('✅ Serwer zamknięty poprawnie');
-    process.exit(0);
-  });
+// Start serwera
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, () => {
+    console.log(`
+╔═══════════════════════════════════════════════════╗
+║                                                   ║
+║   🚀 Akademia Biznesowa API                       ║
+║                                                   ║
+║   📍 Serwer działa na porcie ${PORT}                ║
+║   🌍 Środowisko: ${process.env.NODE_ENV || 'development'}                  ║
+║   📡 URL: http://localhost:${PORT}                   ║
+║                                                   ║
+║   📚 Dokumentacja API:                            ║
+║      - Auth: /api/auth                           ║
+║      - Progress: /api/progress                   ║
+║      - Premium: /api/premium                     ║
+║                                                   ║
+╚═══════════════════════════════════════════════════╝
+    `);
 });
 
-process.on('SIGINT', () => {
-  console.log('\n👋 SIGINT received (Ctrl+C), zamykanie serwera...');
-  server.close(() => {
-    console.log('✅ Serwer zamknięty poprawnie');
-    process.exit(0);
-  });
+// Obsługa nieobsłużonych obietnic
+process.on('unhandledRejection', (err) => {
+    console.error('❌ Unhandled Rejection:', err);
+    // W produkcji: zamknij serwer i zgłoś błąd
+    // server.close(() => process.exit(1));
 });
 
 module.exports = app;
