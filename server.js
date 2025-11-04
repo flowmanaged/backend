@@ -105,23 +105,15 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Server is running on port ${PORT}`);
+  console.log('===========================================');
+  console.log('   🚀 Akademia Biznesowa API');
+  console.log('===========================================');
+  console.log(`   📍 Port: ${PORT}`);
+  console.log(`   🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`   🔗 URL: http://localhost:${PORT}`);
+  console.log('===========================================');
 });
-╔═══════════════════════════════════════════════════╗
-║                                                   ║
-║   🚀 Akademia Biznesowa API                       ║
-║                                                   ║
-║   📍 Serwer działa na porcie ${PORT}                ║
-║   🌍 Środowisko: ${process.env.NODE_ENV || 'development'}                  ║
-║   📡 URL: http://localhost:${PORT}                   ║
-║                                                   ║
-║   📚 Dokumentacja API:                            ║
-║      - Auth: /api/auth                           ║
-║      - Progress: /api/progress                   ║
-║      - Premium: /api/premium                     ║
-║                                                   ║
-╚═══════════════════════════════════════════════════╝
-    `);
-});
+
 
 // Obsługa nieobsłużonych obietnic
 process.on('unhandledRejection', (err) => {
