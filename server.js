@@ -19,7 +19,11 @@ app.use(helmet());
 
 // CORS - dozwól żądania z frontendu
 app.use(cors({
-    origin: process.env.CLIENT_URL || 'http://localhost:3000',
+    origin: [
+        'http://localhost:3000',
+        'http://localhost:5173',
+        'https://frontend-xxx.vercel.app'  // Dodaj URL z Vercel
+    ],
     credentials: true
 }));
 
