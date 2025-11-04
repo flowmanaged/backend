@@ -23,7 +23,7 @@ app.use(cors({
         'http://localhost:3000',
         'http://localhost:5173', 
         'http://localhost:8000',
-        'https://frontend-qcz6.vercel.app
+        'https://frontend-qcz6.vercel.app'
     ],
     credentials: true
 }));
