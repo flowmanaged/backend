@@ -21,8 +21,9 @@ app.use(helmet());
 app.use(cors({
     origin: [
         'http://localhost:3000',
-        'http://localhost:5173',
-        'https://frontend-xxx.vercel.app'  // Dodaj URL z Vercel
+        'http://localhost:5173', 
+        'http://localhost:8000',
+        'https://frontend-qcz6.vercel.app
     ],
     credentials: true
 }));
