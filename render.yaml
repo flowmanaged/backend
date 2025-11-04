@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: akademia-backend
+    env: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: MONGO_URI
+        value: mongodb+srv://flowmanaged_db_user:Aneta123@cluster0.xrma2bt.mongodb.net/akademia-biznesowa
+      - key: JWT_SECRET
+        value: super_tajny_klucz_jwt_akademia_biznesowa_2025_change_me_in_production
+      - key: CLIENT_URL
+        value: http://localhost:3000
