@@ -48,6 +48,5 @@ const paymentSchema = new mongoose.Schema({
 // Index dla szybszego wyszukiwania
 paymentSchema.index({ user: 1, createdAt: -1 });
 paymentSchema.index({ status: 1 });
-paymentSchema.index({ transactionId: 1 });
 
 module.exports = mongoose.model('Payment', paymentSchema);
