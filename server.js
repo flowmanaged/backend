@@ -3,6 +3,8 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const dotenv = require('dotenv');
+dotenv.config();
+console.log('🔍 MONGO_URI:', process.env.MONGO_URI);
 const connectDB = require('./config/database');
 
 // Załaduj zmienne środowiskowe

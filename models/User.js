@@ -13,7 +13,8 @@ const userSchema = new mongoose.Schema({
     password: {
         type: String,
         required: [true, 'Hasło jest wymagane'],
-        minlength: [6, 'Hasło musi mieć minimum 6 znaków']
+        minlength: [6, 'Hasło musi mieć minimum 6 znaków'],
+        select: false
     },
     name: {
         type: String,
