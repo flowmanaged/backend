@@ -75,8 +75,11 @@ userSchema.pre('save', async function(next) {
 });
 
 // Metoda do porównywania haseł
-userSchema.methods.comparePassword = async function(candidatePassword) {
-    return await bcrypt.compare(candidatePassword, this.password);
+userSchema.methods.matchPassword = async function(enteredPassword) {
+    if (!this.password) {
+        return false;
+    }
+    return await bcrypt.compare(enteredPassword, this.password);
 };
 
 // Metoda do sprawdzania statusu premium

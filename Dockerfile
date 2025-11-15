@@ -13,6 +13,7 @@ RUN npm install --production
 
 # Skopiuj resztę plików
 COPY . .
+COPY .env .env
 
 # Eksponuj port
 EXPOSE 10000

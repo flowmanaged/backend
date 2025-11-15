@@ -15,7 +15,7 @@ exports.register = async (req, res) => {
     try {
         const { email, password, name } = req.body;
 
-        // Sprawdź czy użytkownik istnieje
+        // Sprawdź czy użytkownik już istnieje
         const existingUser = await User.findOne({ email });
         if (existingUser) {
             return res.status(400).json({
@@ -24,13 +24,14 @@ exports.register = async (req, res) => {
             });
         }
 
-        // Utwórz użytkownika
+        // Utwórz nowego użytkownika
         const user = await User.create({
             email,
             password,
             name: name || email.split('@')[0]
         });
 
+        // Wygeneruj token
         const token = generateToken(user._id);
 
         res.status(201).json({
@@ -46,7 +47,6 @@ exports.register = async (req, res) => {
                 completedSections: user.completedSections
             }
         });
-
     } catch (error) {
         console.error('Register error:', error);
         res.status(500).json({
@@ -63,8 +63,9 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
+        
+        console.log('🔍 LOGIN ATTEMPT:', { email, passwordProvided: !!password });
 
-        // Walidacja
         if (!email || !password) {
             return res.status(400).json({
                 success: false,
@@ -72,19 +73,23 @@ exports.login = async (req, res) => {
             });
         }
 
-        // 🚀 POBIERZ UŻYTKOWNIKA Z BAZY — TEGO BRAKOWAŁO
         const user = await User.findOne({ email }).select('+password');
+        
+        console.log('👤 USER FOUND:', user ? 'YES' : 'NO');
+        console.log('📧 Searching for email:', email);
 
         if (!user) {
+            console.log('❌ USER NOT EXISTS - should return 401');
             return res.status(401).json({
                 success: false,
                 message: 'Nieprawidłowy email lub hasło'
             });
         }
 
-        // 🚀 SPRAWDZENIE HASŁA
+        console.log('🔐 Checking password...');
         const isPasswordCorrect = await user.comparePassword(password);
-
+        console.log('🔐 Password correct:', isPasswordCorrect);
+        
         if (!isPasswordCorrect) {
             return res.status(401).json({
                 success: false,
@@ -92,19 +97,22 @@ exports.login = async (req, res) => {
             });
         }
 
-        // Aktualizacja premium
+       // 5. Sprawdź i zaktualizuj status premium jeśli wygasł
         if (user.isPremium && user.premiumExpiresAt && user.premiumExpiresAt < new Date()) {
             user.isPremium = false;
             user.premiumExpiresAt = null;
         }
 
-        // Ostatnie logowanie
+        // 6. Zaktualizuj ostatnie logowanie
         user.lastLogin = new Date();
         await user.save();
 
+        // 7. Wygeneruj token
         const token = generateToken(user._id);
 
-        return res.json({
+        console.log('✅ LOGIN SUCCESS for:', email);
+
+        res.json({
             success: true,
             message: 'Zalogowano pomyślnie',
             token,
@@ -118,10 +126,9 @@ exports.login = async (req, res) => {
                 premiumExpiresAt: user.premiumExpiresAt
             }
         });
-
     } catch (error) {
         console.error('Login error:', error);
-        return res.status(500).json({
+        res.status(500).json({
             success: false,
             message: 'Błąd podczas logowania',
             error: error.message
@@ -135,7 +142,7 @@ exports.login = async (req, res) => {
 exports.getMe = async (req, res) => {
     try {
         const user = await User.findById(req.user.id);
-
+        
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -143,7 +150,7 @@ exports.getMe = async (req, res) => {
             });
         }
 
-        // Sprawdź premium
+        // Sprawdź i zaktualizuj status premium
         if (user.isPremium && user.premiumExpiresAt && user.premiumExpiresAt < new Date()) {
             user.isPremium = false;
             user.premiumExpiresAt = null;
@@ -165,7 +172,6 @@ exports.getMe = async (req, res) => {
                 lastLogin: user.lastLogin
             }
         });
-
     } catch (error) {
         console.error('GetMe error:', error);
         res.status(500).json({
@@ -184,7 +190,8 @@ exports.changePassword = async (req, res) => {
         const { currentPassword, newPassword } = req.body;
 
         const user = await User.findById(req.user.id).select('+password');
-
+        
+        // Sprawdź aktualne hasło
         const isPasswordCorrect = await user.comparePassword(currentPassword);
         if (!isPasswordCorrect) {
             return res.status(401).json({
@@ -193,6 +200,7 @@ exports.changePassword = async (req, res) => {
             });
         }
 
+        // Ustaw nowe hasło
         user.password = newPassword;
         await user.save();
 
@@ -200,7 +208,6 @@ exports.changePassword = async (req, res) => {
             success: true,
             message: 'Hasło zostało zmienione pomyślnie'
         });
-
     } catch (error) {
         console.error('Change password error:', error);
         res.status(500).json({
@@ -226,6 +233,7 @@ exports.forgotPassword = async (req, res) => {
             });
         }
 
+        // Wygeneruj token resetowania (w produkcji należy wysłać email)
         const resetToken = jwt.sign(
             { id: user._id },
             process.env.JWT_SECRET,
@@ -233,15 +241,18 @@ exports.forgotPassword = async (req, res) => {
         );
 
         user.resetPasswordToken = resetToken;
-        user.resetPasswordExpires = Date.now() + 3600000;
+        user.resetPasswordExpires = Date.now() + 3600000; // 1 godzina
         await user.save();
 
+        // TODO: Wysłać email z linkiem do resetu
+        // W produkcji należy zintegrować z serwisem email (np. SendGrid, Mailgun)
+        
         res.json({
             success: true,
             message: 'Link do resetowania hasła został wysłany na email',
+            // W developmencie zwracamy token (w produkcji usunąć!)
             resetToken: process.env.NODE_ENV === 'development' ? resetToken : undefined
         });
-
     } catch (error) {
         console.error('Forgot password error:', error);
         res.status(500).json({
@@ -260,6 +271,7 @@ exports.resetPassword = async (req, res) => {
         const { token } = req.params;
         const { newPassword } = req.body;
 
+        // Weryfikuj token
         let decoded;
         try {
             decoded = jwt.verify(token, process.env.JWT_SECRET);
@@ -283,6 +295,7 @@ exports.resetPassword = async (req, res) => {
             });
         }
 
+        // Ustaw nowe hasło
         user.password = newPassword;
         user.resetPasswordToken = undefined;
         user.resetPasswordExpires = undefined;
@@ -292,7 +305,6 @@ exports.resetPassword = async (req, res) => {
             success: true,
             message: 'Hasło zostało zresetowane pomyślnie'
         });
-
     } catch (error) {
         console.error('Reset password error:', error);
         res.status(500).json({
