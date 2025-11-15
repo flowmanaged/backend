@@ -97,7 +97,7 @@ exports.login = async (req, res) => {
             });
         }
 
-        // 5. Sprawdź i zaktualizuj status premium jeśli wygasł
+       // 5. Sprawdź i zaktualizuj status premium jeśli wygasł
         if (user.isPremium && user.premiumExpiresAt && user.premiumExpiresAt < new Date()) {
             user.isPremium = false;
             user.premiumExpiresAt = null;
@@ -108,7 +108,7 @@ exports.login = async (req, res) => {
         await user.save();
 
         // 7. Wygeneruj token
-         const token = generateToken(user._id);
+        const token = generateToken(user._id);
 
         console.log('✅ LOGIN SUCCESS for:', email);
 
