@@ -63,8 +63,9 @@ exports.register = async (req, res) => {
 exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
+        
+        console.log('🔍 LOGIN ATTEMPT:', { email, passwordProvided: !!password });
 
-        // 1. Walidacja - sprawdź czy email i hasło zostały podane
         if (!email || !password) {
             return res.status(400).json({
                 success: false,
@@ -72,19 +73,23 @@ exports.login = async (req, res) => {
             });
         }
 
-        // ✅ 2. KRYTYCZNE: Znajdź użytkownika w bazie + dołącz hasło
         const user = await User.findOne({ email }).select('+password');
+        
+        console.log('👤 USER FOUND:', user ? 'YES' : 'NO');
+        console.log('📧 Searching for email:', email);
 
-        // ✅ 3. KRYTYCZNE: Sprawdź czy użytkownik istnieje
         if (!user) {
+            console.log('❌ USER NOT EXISTS - should return 401');
             return res.status(401).json({
                 success: false,
                 message: 'Nieprawidłowy email lub hasło'
             });
         }
 
-        // 4. Sprawdź hasło
+        console.log('🔐 Checking password...');
         const isPasswordCorrect = await user.comparePassword(password);
+        console.log('🔐 Password correct:', isPasswordCorrect);
+        
         if (!isPasswordCorrect) {
             return res.status(401).json({
                 success: false,
@@ -103,7 +108,9 @@ exports.login = async (req, res) => {
         await user.save();
 
         // 7. Wygeneruj token
-        const token = generateToken(user._id);
+         const token = generateToken(user._id);
+
+        console.log('✅ LOGIN SUCCESS for:', email);
 
         res.json({
             success: true,
