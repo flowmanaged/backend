@@ -64,8 +64,18 @@ exports.login = async (req, res) => {
     try {
         const { email, password } = req.body;
 
-        // Sprawdź czy użytkownik istnieje (pobierz z hasłem do porównania)
+        // 1. Walidacja - sprawdź czy email i hasło zostały podane
+        if (!email || !password) {
+            return res.status(400).json({
+                success: false,
+                message: 'Proszę podać email i hasło'
+            });
+        }
+
+        // ✅ 2. KRYTYCZNE: Znajdź użytkownika w bazie + dołącz hasło
         const user = await User.findOne({ email }).select('+password');
+
+        // ✅ 3. KRYTYCZNE: Sprawdź czy użytkownik istnieje
         if (!user) {
             return res.status(401).json({
                 success: false,
@@ -73,7 +83,7 @@ exports.login = async (req, res) => {
             });
         }
 
-        // Sprawdź hasło
+        // 4. Sprawdź hasło
         const isPasswordCorrect = await user.comparePassword(password);
         if (!isPasswordCorrect) {
             return res.status(401).json({
@@ -82,17 +92,17 @@ exports.login = async (req, res) => {
             });
         }
 
-        // Sprawdź i zaktualizuj status premium jeśli wygasł
+        // 5. Sprawdź i zaktualizuj status premium jeśli wygasł
         if (user.isPremium && user.premiumExpiresAt && user.premiumExpiresAt < new Date()) {
             user.isPremium = false;
             user.premiumExpiresAt = null;
         }
 
-        // Zaktualizuj ostatnie logowanie
+        // 6. Zaktualizuj ostatnie logowanie
         user.lastLogin = new Date();
         await user.save();
 
-        // Wygeneruj token
+        // 7. Wygeneruj token
         const token = generateToken(user._id);
 
         res.json({
