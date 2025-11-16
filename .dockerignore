@@ -1,15 +1,8 @@
 node_modules
 npm-debug.log
 .env
-.env.local
+.env.*
 .git
 .gitignore
-README.md
-.DS_Store
-.vscode
-.idea
 *.md
-!INSTALACJA.md
-coverage
-.nyc_output
-dist
+.DS_Store
