@@ -11,129 +11,84 @@ const generateToken = (userId) => {
 // @desc    Rejestracja użytkownika
 // @route   POST /api/auth/register
 // @access  Public
-exports.register = async (req, res) => {
-    try {
-        const { email, password, name } = req.body;
-
-        // Sprawdź czy użytkownik już istnieje
-        const existingUser = await User.findOne({ email });
-        if (existingUser) {
-            return res.status(400).json({
-                success: false,
-                message: 'Użytkownik z tym adresem email już istnieje'
-            });
-        }
-
-        // Utwórz nowego użytkownika
-        const user = await User.create({
-            email,
-            password,
-            name: name || email.split('@')[0]
-        });
-
-        // Wygeneruj token
-        const token = generateToken(user._id);
-
-        res.status(201).json({
-            success: true,
-            message: 'Rejestracja zakończona sukcesem',
-            token,
-            user: {
-                id: user._id,
-                email: user.email,
-                name: user.name,
-                role: user.role,
-                isPremium: user.isPremium,
-                completedSections: user.completedSections
-            }
-        });
-    } catch (error) {
-        console.error('Register error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Błąd podczas rejestracji',
-            error: error.message
-        });
-    }
-};
-
-// @desc    Logowanie użytkownika
-// @route   POST /api/auth/login
-// @access  Public
+// @desc    Logowanie użytkownika
+// @route   POST /api/auth/login
+// @access  Public
 exports.login = async (req, res) => {
-    try {
-        const { email, password } = req.body;
-        
-        console.log('🔍 LOGIN ATTEMPT:', { email, passwordProvided: !!password });
+    try {
+        const { email, password } = req.body;
+        
+        console.log('🔍 LOGIN ATTEMPT:', { email, passwordProvided: !!password });
 
-        if (!email || !password) {
-            return res.status(400).json({
-                success: false,
-                message: 'Proszę podać email i hasło'
-            });
-        }
+        if (!email || !password) {
+            return res.status(400).json({
+                success: false,
+                message: 'Proszę podać email i hasło'
+            });
+        }
 
-        const user = await User.findOne({ email }).select('+password');
-        
-        console.log('👤 USER FOUND:', user ? 'YES' : 'NO');
-        console.log('📧 Searching for email:', email);
+        const user = await User.findOne({ email }).select('+password');
+        
+        console.log('👤 USER FOUND:', user ? 'YES' : 'NO');
+        console.log('📧 Searching for email:', email);
 
-        if (!user) {
-            console.log('❌ USER NOT EXISTS - should return 401');
-            return res.status(401).json({
-                success: false,
-                message: 'Nieprawidłowy email lub hasło'
-            });
-        }
+        if (!user) {
+            console.log('❌ USER NOT EXISTS - returning 401');
+            return res.status(401).json({
+                success: false,
+                message: 'Nieprawidłowy email lub hasło'
+            });
+        }
 
-        console.log('🔐 Checking password...');
-        const isPasswordCorrect = await user.comparePassword(password);
-        console.log('🔐 Password correct:', isPasswordCorrect);
-        
-        if (!isPasswordCorrect) {
-            return res.status(401).json({
-                success: false,
-                message: 'Nieprawidłowy email lub hasło'
-            });
-        }
+        console.log('🔐 Checking password...');
+        // POPRAWKA: ZMIANA NA matchPassword
+        const isPasswordCorrect = await user.matchPassword(password);
+        console.log('🔐 Password correct:', isPasswordCorrect);
+        
+        if (!isPasswordCorrect) {
+            return res.status(401).json({
+                success: false,
+                message: 'Nieprawidłowy email lub hasło'
+            });
+        }
 
-       // 5. Sprawdź i zaktualizuj status premium jeśli wygasł
-        if (user.isPremium && user.premiumExpiresAt && user.premiumExpiresAt < new Date()) {
-            user.isPremium = false;
-            user.premiumExpiresAt = null;
-        }
+       // 5. Sprawdź i zaktualizuj status premium jeśli wygasł
+        if (user.isPremium && user.premiumExpiresAt && user.premiumExpiresAt < new Date()) {
+            user.isPremium = false;
+            user.premiumExpiresAt = null;
+        }
 
-        // 6. Zaktualizuj ostatnie logowanie
-        user.lastLogin = new Date();
-        await user.save();
+        // 6. Zaktualizuj ostatnie logowanie
+        user.lastLogin = new Date();
+        await user.save();
 
-        // 7. Wygeneruj token
-        const token = generateToken(user._id);
+        // 7. Wygeneruj token
+        const token = generateToken(user._id);
 
-        console.log('✅ LOGIN SUCCESS for:', email);
+        console.log('✅ LOGIN SUCCESS for:', email);
 
-        res.json({
-            success: true,
-            message: 'Zalogowano pomyślnie',
-            token,
-            user: {
-                id: user._id,
-                email: user.email,
-                name: user.name,
-                role: user.role,
-                isPremium: user.isPremium,
-                completedSections: user.completedSections,
-                premiumExpiresAt: user.premiumExpiresAt
-            }
-        });
-    } catch (error) {
-        console.error('Login error:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Błąd podczas logowania',
-            error: error.message
-        });
-    }
+        res.json({
+            success: true,
+            message: 'Zalogowano pomyślnie',
+            token,
+            user: {
+                id: user._id,
+                email: user.email,
+                name: user.name,
+                role: user.role,
+                isPremium: user.isPremium,
+                completedSections: user.completedSections,
+                premiumExpiresAt: user.premiumExpiresAt
+            }
+        });
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Błąd podczas logowania',
+            error: error.message
+        });
+    }
 };
 
 // @desc    Pobierz dane zalogowanego użytkownika
