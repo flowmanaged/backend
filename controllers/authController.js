@@ -1,101 +1,80 @@
+const User = require('../models/user');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const User = require('../models/User');
-const { body, validationResult } = require('express-validator');
 
-// Generowanie JWT tokena
+// Generowanie tokenu JWT
 const generateToken = (userId) => {
-    return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
-        expiresIn: process.env.JWT_EXPIRE || '7d'
-    });
+    return jwt.sign(
+        { id: userId },
+        process.env.JWT_SECRET,
+        { expiresIn: process.env.JWT_EXPIRE || '7d' }
+    );
 };
-
-// Helper do hashowania tokenów
-const hashToken = (token) => {
-    return crypto.createHash('sha256').update(token).digest('hex');
-};
-
-// Walidatory
-exports.registerValidation = [
-    body('email')
-        .isEmail().withMessage('Nieprawidłowy format email')
-        .normalizeEmail()
-        .isLength({ max: 255 }).withMessage('Email zbyt długi'),
-    body('password')
-        .isLength({ min: 8 }).withMessage('Hasło musi mieć min. 8 znaków')
-        .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/).withMessage('Hasło musi zawierać małą i wielką literę oraz cyfrę'),
-    body('name')
-        .optional()
-        .trim()
-        .isLength({ min: 2, max: 50 }).withMessage('Nazwa musi mieć 2-50 znaków')
-];
-
-exports.loginValidation = [
-    body('email').isEmail().normalizeEmail(),
-    body('password').notEmpty()
-];
 
 // @desc    Rejestracja użytkownika
 // @route   POST /api/auth/register
 // @access  Public
 exports.register = async (req, res) => {
     try {
-        // Walidacja
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
-            return res.status(400).json({
-                success: false,
-                message: 'Dane rejestracji są nieprawidłowe',
-                errors: errors.array()
-            });
-        }
-
         const { email, password, name } = req.body;
 
-        // Sprawdź czy użytkownik już istnieje
-        const existingUser = await User.findOne({ email });
-        if (existingUser) {
+        // 1. Sprawdź czy email już istnieje
+        const emailExists = await User.emailExists(email);
+        
+        if (emailExists) {
             return res.status(400).json({
                 success: false,
-                message: 'Rejestracja nie powiodła się' // Nie ujawniaj że user istnieje
+                message: 'Użytkownik z tym adresem email już istnieje'
             });
         }
 
-        // Utwórz nowego użytkownika
+        // 2. Walidacja hasła
+        if (password.length < 8) {
+            return res.status(400).json({
+                success: false,
+                message: 'Hasło musi mieć minimum 8 znaków'
+            });
+        }
+
+        // 3. Utwórz użytkownika
         const user = await User.create({
             email,
             password,
-            name: name || email.split('@')[0]
+            name: name || email.split('@')[0] // Jeśli nie podano imienia, użyj części email
         });
 
-        // Wygeneruj token
+        // 4. Wygeneruj token
         const token = generateToken(user._id);
 
-        // Log zdarzenia (użyj logger w produkcji, np. Winston)
-        console.info(`New user registered: ${user._id}`);
-
+        // 5. Zwróć odpowiedź
         res.status(201).json({
             success: true,
-            message: 'Rejestracja zakończona sukcesem',
+            message: 'Rejestracja zakończona pomyślnie',
             token,
             user: {
                 id: user._id,
                 email: user.email,
                 name: user.name,
                 role: user.role,
-                isPremium: user.isPremium,
-                completedSections: user.completedSections,
-                premiumExpiresAt: user.premiumExpiresAt 
+                isPremium: user.isPremium
             }
         });
 
     } catch (error) {
-        console.error('Register error:', error);
+        console.error('❌ Błąd rejestracji:', error);
+        
+        // Obsługa błędów walidacji Mongoose
+        if (error.name === 'ValidationError') {
+            const messages = Object.values(error.errors).map(err => err.message);
+            return res.status(400).json({
+                success: false,
+                message: messages.join(', ')
+            });
+        }
+
         res.status(500).json({
             success: false,
-            message: 'Błąd podczas rejestracji',
-            // NIE zwracaj error.message w produkcji
-            ...(process.env.NODE_ENV === 'development' && { error: error.message })
+            message: 'Błąd serwera podczas rejestracji'
         });
     }
 };
@@ -105,48 +84,39 @@ exports.register = async (req, res) => {
 // @access  Public
 exports.login = async (req, res) => {
     try {
-        // Walidacja
-        const errors = validationResult(req);
-        if (!errors.isEmpty()) {
+        const { email, password } = req.body;
+
+        // 1. Walidacja danych wejściowych
+        if (!email || !password) {
             return res.status(400).json({
                 success: false,
-                message: 'Nieprawidłowe dane logowania'
+                message: 'Proszę podać email i hasło'
             });
         }
 
-        const { email, password } = req.body;
+        // 2. 🔥 KLUCZOWE: Znajdź użytkownika i sprawdź credentials
+        const user = await User.findByCredentials(email, password);
 
-        // Znajdź użytkownika
-        const user = await User.findOne({ email }).select('+password');
-        
-        // Użyj stałego czasu odpowiedzi dla bezpieczeństwa
-        const isPasswordCorrect = user 
-            ? await user.comparePassword(password)
-            : false;
-        
-        if (!user || !isPasswordCorrect) {
-            // Log nieudanej próby
-            console.warn(`Failed login attempt for: ${email}`);
-            
+        // 3. 🔥 KLUCZOWE: Sprawdź czy użytkownik został znaleziony
+        if (!user) {
             return res.status(401).json({
                 success: false,
                 message: 'Nieprawidłowy email lub hasło'
             });
         }
 
-        // Sprawdź i zaktualizuj status premium
+        // 4. Sprawdź i zaktualizuj status premium (jeśli wygasł)
         await user.checkAndUpdatePremiumStatus();
 
-        // Zaktualizuj ostatnie logowanie
+        // 5. Aktualizuj ostatnie logowanie
         user.lastLogin = new Date();
         await user.save();
 
-        // Wygeneruj token
+        // 6. Wygeneruj token
         const token = generateToken(user._id);
 
-        console.info(`User logged in: ${user._id}`);
-
-        res.json({
+        // 7. Zwróć odpowiedź
+        res.status(200).json({
             success: true,
             message: 'Zalogowano pomyślnie',
             token,
@@ -155,17 +125,18 @@ exports.login = async (req, res) => {
                 email: user.email,
                 name: user.name,
                 role: user.role,
-                isPremium: user.isPremium,
+                isPremium: user.hasPremium(),
+                premiumExpiresAt: user.premiumExpiresAt,
                 completedSections: user.completedSections,
-                premiumExpiresAt: user.premiumExpiresAt
+                stats: user.getStats()
             }
         });
+
     } catch (error) {
-        console.error('Login error:', error);
+        console.error('❌ Błąd logowania:', error);
         res.status(500).json({
             success: false,
-            message: 'Błąd podczas logowania',
-            ...(process.env.NODE_ENV === 'development' && { error: error.message })
+            message: 'Błąd serwera podczas logowania'
         });
     }
 };
@@ -175,10 +146,9 @@ exports.login = async (req, res) => {
 // @access  Private
 exports.getMe = async (req, res) => {
     try {
-        // Pobierz tylko potrzebne pola
-        const user = await User.findById(req.user.id)
-            .select('email name role isPremium completedSections premiumExpiresAt quizResults createdAt lastLogin');
-        
+        // req.user jest ustawione przez middleware 'protect'
+        const user = await User.findById(req.user.id);
+
         if (!user) {
             return res.status(404).json({
                 success: false,
@@ -189,151 +159,154 @@ exports.getMe = async (req, res) => {
         // Sprawdź i zaktualizuj status premium
         await user.checkAndUpdatePremiumStatus();
 
-        res.json({
+        res.status(200).json({
             success: true,
             user: {
                 id: user._id,
                 email: user.email,
                 name: user.name,
                 role: user.role,
-                isPremium: user.isPremium,
-                completedSections: user.completedSections,
+                isPremium: user.hasPremium(),
                 premiumExpiresAt: user.premiumExpiresAt,
-                quizResults: user.quizResults,
-                createdAt: user.createdAt,
-                lastLogin: user.lastLogin
+                completedSections: user.completedSections,
+                stats: user.getStats(),
+                createdAt: user.createdAt
             }
         });
+
     } catch (error) {
-        console.error('GetMe error:', error);
+        console.error('❌ Błąd pobierania danych użytkownika:', error);
         res.status(500).json({
             success: false,
-            message: 'Błąd podczas pobierania danych użytkownika',
-            ...(process.env.NODE_ENV === 'development' && { error: error.message })
+            message: 'Błąd serwera'
         });
     }
 };
 
-// @desc    Zmień hasło
+// @desc    Zmiana hasła
 // @route   PUT /api/auth/change-password
 // @access  Private
 exports.changePassword = async (req, res) => {
     try {
         const { currentPassword, newPassword } = req.body;
 
-        // Walidacja
-        if (!newPassword || newPassword.length < 8) {
+        // 1. Znajdź użytkownika z hasłem
+        const user = await User.findById(req.user.id).select('+password');
+
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'Użytkownik nie znaleziony'
+            });
+        }
+
+        // 2. Sprawdź obecne hasło
+        const isPasswordCorrect = await user.comparePassword(currentPassword);
+        
+        if (!isPasswordCorrect) {
+            return res.status(401).json({
+                success: false,
+                message: 'Obecne hasło jest nieprawidłowe'
+            });
+        }
+
+        // 3. Walidacja nowego hasła
+        if (newPassword.length < 8) {
             return res.status(400).json({
                 success: false,
                 message: 'Nowe hasło musi mieć minimum 8 znaków'
             });
         }
 
-        const user = await User.findById(req.user.id).select('+password');
-        
-        // Sprawdź aktualne hasło
-        const isPasswordCorrect = await user.comparePassword(currentPassword);
-        if (!isPasswordCorrect) {
-            console.warn(`Failed password change for user: ${user._id}`);
-            return res.status(401).json({
-                success: false,
-                message: 'Nieprawidłowe aktualne hasło'
-            });
-        }
-
-        // Ustaw nowe hasło
+        // 4. Ustaw nowe hasło (zostanie zahashowane przez middleware)
         user.password = newPassword;
-        
-        // WAŻNE: Unieważnij wszystkie stare tokeny
-        // Opcja 1: Dodaj pole tokenVersion do user i zwiększ je
-        // Opcja 2: Przechowuj tokeny w bazie i usuń je
-        // Opcja 3: Dodaj timestamp do tokena i weryfikuj go
-        
         await user.save();
 
-        console.info(`Password changed for user: ${user._id}`);
+        // 5. Wygeneruj nowy token
+        const token = generateToken(user._id);
 
-        res.json({
+        res.status(200).json({
             success: true,
-            message: 'Hasło zostało zmienione pomyślnie'
+            message: 'Hasło zostało zmienione pomyślnie',
+            token
         });
+
     } catch (error) {
-        console.error('Change password error:', error);
+        console.error('❌ Błąd zmiany hasła:', error);
         res.status(500).json({
             success: false,
-            message: 'Błąd podczas zmiany hasła',
-            ...(process.env.NODE_ENV === 'development' && { error: error.message })
+            message: 'Błąd serwera podczas zmiany hasła'
         });
     }
 };
 
-// @desc    Żądanie resetu hasła
+// @desc    Zapomniałem hasła - wyślij email z tokenem
 // @route   POST /api/auth/forgot-password
 // @access  Public
 exports.forgotPassword = async (req, res) => {
     try {
         const { email } = req.body;
 
+        // 1. Znajdź użytkownika
         const user = await User.findOne({ email });
-        
-        // ZAWSZE zwróć sukces, nawet jeśli user nie istnieje (bezpieczeństwo)
+
+        // 2. ZAWSZE zwracamy sukces (bezpieczeństwo - nie ujawniaj czy email istnieje)
         if (!user) {
-            console.warn(`Password reset requested for non-existent email: ${email}`);
-            return res.json({
+            return res.status(200).json({
                 success: true,
-                message: 'Jeśli konto istnieje, link resetowania został wysłany na email'
+                message: 'Jeśli konto z tym adresem email istnieje, link resetujący hasło został wysłany'
             });
         }
 
-        // Wygeneruj losowy token
+        // 3. Wygeneruj token resetujący
         const resetToken = crypto.randomBytes(32).toString('hex');
-        const hashedToken = hashToken(resetToken);
+        
+        // 4. Zahashuj token i zapisz w bazie
+        const hashedToken = crypto
+            .createHash('sha256')
+            .update(resetToken)
+            .digest('hex');
 
-        user.resetPasswordToken = hashedToken; // Przechowuj HASH, nie raw token
+        user.resetPasswordToken = hashedToken;
         user.resetPasswordExpires = Date.now() + 3600000; // 1 godzina
         await user.save();
 
-        // TODO: Wysłać email z linkiem
-        // const resetUrl = `${req.protocol}://${req.get('host')}/reset-password/${resetToken}`;
-        // await sendEmail({ to: user.email, subject: 'Reset hasła', html: ... });
+        // 5. TODO: Wyślij email z linkiem resetującym
+        // const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
+        // await sendEmail({ email: user.email, resetUrl });
 
-        console.info(`Password reset requested for user: ${user._id}`);
+        console.log(`🔐 Token resetujący dla ${email}: ${resetToken}`);
+        console.log(`🔗 Link resetujący (DEV): http://localhost:3000/reset-password/${resetToken}`);
 
-        res.json({
+        res.status(200).json({
             success: true,
-            message: 'Jeśli konto istnieje, link resetowania został wysłany na email',
-            // TYLKO dla developmentu
-            ...(process.env.NODE_ENV === 'development' && { resetToken })
+            message: 'Link resetujący hasło został wysłany na podany adres email'
         });
+
     } catch (error) {
-        console.error('Forgot password error:', error);
+        console.error('❌ Błąd resetowania hasła:', error);
         res.status(500).json({
             success: false,
-            message: 'Błąd podczas żądania resetu hasła',
-            ...(process.env.NODE_ENV === 'development' && { error: error.message })
+            message: 'Błąd serwera podczas resetowania hasła'
         });
     }
 };
 
-// @desc    Reset hasła
+// @desc    Resetuj hasło
 // @route   POST /api/auth/reset-password/:token
 // @access  Public
 exports.resetPassword = async (req, res) => {
     try {
         const { token } = req.params;
-        const { newPassword } = req.body;
+        const { password } = req.body;
 
-        // Walidacja nowego hasła
-        if (!newPassword || newPassword.length < 8) {
-            return res.status(400).json({
-                success: false,
-                message: 'Hasło musi mieć minimum 8 znaków'
-            });
-        }
+        // 1. Zahashuj token z URL
+        const hashedToken = crypto
+            .createHash('sha256')
+            .update(token)
+            .digest('hex');
 
-        // Hash tokena z URL
-        const hashedToken = hashToken(token);
-
+        // 2. Znajdź użytkownika z ważnym tokenem
         const user = await User.findOne({
             resetPasswordToken: hashedToken,
             resetPasswordExpires: { $gt: Date.now() }
@@ -342,28 +315,38 @@ exports.resetPassword = async (req, res) => {
         if (!user) {
             return res.status(400).json({
                 success: false,
-                message: 'Token resetowania jest nieprawidłowy lub wygasł'
+                message: 'Token resetujący jest nieprawidłowy lub wygasł'
             });
         }
 
-        // Ustaw nowe hasło
-        user.password = newPassword;
+        // 3. Walidacja nowego hasła
+        if (password.length < 8) {
+            return res.status(400).json({
+                success: false,
+                message: 'Hasło musi mieć minimum 8 znaków'
+            });
+        }
+
+        // 4. Ustaw nowe hasło
+        user.password = password;
         user.resetPasswordToken = undefined;
         user.resetPasswordExpires = undefined;
         await user.save();
 
-        console.info(`Password reset completed for user: ${user._id}`);
+        // 5. Wygeneruj nowy token
+        const jwtToken = generateToken(user._id);
 
-        res.json({
+        res.status(200).json({
             success: true,
-            message: 'Hasło zostało zresetowane pomyślnie'
+            message: 'Hasło zostało zresetowane pomyślnie',
+            token: jwtToken
         });
+
     } catch (error) {
-        console.error('Reset password error:', error);
+        console.error('❌ Błąd resetowania hasła:', error);
         res.status(500).json({
             success: false,
-            message: 'Błąd podczas resetowania hasła',
-            ...(process.env.NODE_ENV === 'development' && { error: error.message })
+            message: 'Błąd serwera podczas resetowania hasła'
         });
     }
 };
