@@ -75,11 +75,11 @@ userSchema.pre('save', async function(next) {
 });
 
 // Metoda do porównywania haseł
-userSchema.methods.matchPassword = async function(enteredPassword) {
+userSchema.methods.comparePassword = async function(candidatePassword) {
     if (!this.password) {
         return false;
     }
-    return await bcrypt.compare(enteredPassword, this.password);
+      return await bcrypt.compare(candidatePassword, this.password);
 };
 
 // Metoda do sprawdzania statusu premium
@@ -94,6 +94,12 @@ userSchema.methods.checkPremiumStatus = function() {
         return false;
     }
     
+    userSchema.methods.checkAndUpdatePremiumStatus = async function() {
+    if (this.isPremium && this.premiumExpiresAt && this.premiumExpiresAt < new Date()) {
+        this.isPremium = false;
+        this.premiumExpiresAt = null;
+        await this.save();
+    }
     return true;
 };
 
